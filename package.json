@@ -13,14 +13,18 @@
   "devDependencies": {
     "@types/jest": "^29.5.12",
     "@types/node": "20.11.16",
+    "aws-cdk": "2.127.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.2",
-    "aws-cdk": "2.127.0",
     "ts-node": "^10.9.2",
     "typescript": "~5.3.3"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.511.0",
+    "@aws-sdk/client-dynamodb": "^3.511.0",
+    "@aws-sdk/lib-dynamodb": "^3.511.0",
     "aws-cdk-lib": "2.127.0",
+    "aws-sdk": "^2.1556.0",
     "constructs": "^10.0.0",
     "source-map-support": "^0.5.21"
   }
