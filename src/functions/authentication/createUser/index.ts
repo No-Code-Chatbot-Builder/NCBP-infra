@@ -35,7 +35,6 @@ exports.handler = async (event: any) => {
       ":typeVal": `User`,
       ":sk": `USEREMAIL#${event.request.userAttributes.email}`,
     },
-    ConsistentRead: true
   });
   try {
     const response = await dynamodb.send(queryCommand);

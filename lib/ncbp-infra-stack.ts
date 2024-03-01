@@ -5,6 +5,7 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as iam from "aws-cdk-lib/aws-iam";
+import { S3CdnBucket } from "./constructs/s3-cdn-bucket";
 
 export class NcbpInfraStack extends cdk.Stack {
   public readonly userPool: cognito.UserPool;
@@ -36,11 +37,23 @@ export class NcbpInfraStack extends cdk.Stack {
       },
     });
 
+    this.dynamoTable.addGlobalSecondaryIndex({
+      indexName: "GSIType",
+      partitionKey: {
+        name: "type",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+    })
+
     // s3 bucket: stores user uploads
-    this.s3Bucket = new s3.Bucket(this, "NcbpS3Bucket", {
+    this.s3Bucket = new S3CdnBucket(this, "NcbpS3Bucket", {
       bucketName: "ncbp-assets-bucket",
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
+      removalPolicy: false
+    }).assetsBucket
 
     // Cognito UserPool and UserPoolClient for authentication
     this.userPool = new cognito.UserPool(this, "NcbpPool", {

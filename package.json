@@ -5,6 +5,7 @@
     "ncbp-infra": "bin/ncbp-infra.js"
   },
   "scripts": {
+    "deploy": "npm run build && cdk deploy --profile ncbp",
     "build": "tsc",
     "watch": "tsc -w",
     "test": "jest",
