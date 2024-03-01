@@ -50,8 +50,8 @@ export class NcbpInfraStack extends cdk.Stack {
     })
 
     // s3 bucket: stores user uploads
-    this.s3Bucket = new S3CdnBucket(this, "NcbpS3Bucket", {
-      bucketName: "ncbp-assets-bucket",
+    this.s3Bucket = new S3CdnBucket(this, "NcbpS3CdnBucket", {
+      bucketName: "ncbp-assets",
       removalPolicy: false
     }).assetsBucket
 
