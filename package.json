@@ -5,7 +5,7 @@
     "ncbp-infra": "bin/ncbp-infra.js"
   },
   "scripts": {
-    "deploy": "npm run build && cdk deploy --profile ncbp",
+    "deploy": "npm run build && cdk deploy --profile ncbp --all",
     "build": "tsc",
     "watch": "tsc -w",
     "test": "jest",
@@ -27,6 +27,7 @@
     "aws-cdk-lib": "2.127.0",
     "aws-sdk": "^2.1556.0",
     "constructs": "^10.0.0",
+    "dotenv": "^16.4.5",
     "source-map-support": "^0.5.21"
   }
 }
