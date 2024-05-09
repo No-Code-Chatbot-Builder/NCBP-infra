@@ -6,6 +6,8 @@ import * as servicediscovery from "aws-cdk-lib/aws-servicediscovery";
 import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as s3 from "aws-cdk-lib/aws-s3";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import * as iam from "aws-cdk-lib/aws-iam";
 import "dotenv/config";
 
 interface NcbpEcsStackProps extends cdk.StackProps {
@@ -22,10 +24,13 @@ export interface ContainerProperties {
   id: string;
   // Environment variables for the container
   environment: { [key: string]: string };
+  secretArn: string;
   // Define the path or host header for routing traffic
   conditions: elbv2.ListenerCondition[];
   // The health check path
   healthCheckPath: string;
+  dockerHub?: boolean;
+  dockerHubUsername?: string;
 }
 
 export interface Tag {
@@ -37,23 +42,50 @@ const createTaskDefinition = (
   id: string,
   stack: cdk.Stack,
   containerProperties: ContainerProperties,
+  // taskRole: iam.Role,
   tags: Tag[]
 ) => {
+  const secret = secretsmanager.Secret.fromSecretCompleteArn(stack, `${id}Secret`, containerProperties.secretArn);
+
   const taskDefinition = new ecs.FargateTaskDefinition(
     stack,
     `${id}TaskDefinition`,
     {
-      cpu: 2048,
-      memoryLimitMiB: 8192
+      cpu: 4096,
+      memoryLimitMiB: 30720,
+      taskRole: new iam.Role(stack, `${id}TaskRole`, {
+        roleName: `${id}TaskRole`,
+        assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+        managedPolicies: [
+          iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonS3FullAccess"),
+          iam.ManagedPolicy.fromAwsManagedPolicyName(
+            "AmazonDynamoDBFullAccess"
+          ),
+        ],
+      }),
     }
   );
-  const repo = ecr.Repository.fromRepositoryName(stack, `${containerProperties.repoName}Repo`, containerProperties.repoName)
+
   taskDefinition
     .addContainer(`${id}Container`, {
-      image: ecs.ContainerImage.fromEcrRepository(repo, 'latest'),
+      image: containerProperties.dockerHub
+        ? ecs.ContainerImage.fromRegistry(
+            `${containerProperties.dockerHubUsername}/${containerProperties.repoName}`
+          )
+        : ecs.ContainerImage.fromEcrRepository(
+            ecr.Repository.fromRepositoryName(
+              stack,
+              `${id}Repo`,
+              containerProperties.repoName
+            ),
+            "latest"
+          ),
       memoryLimitMiB: 2048,
       cpu: 512,
       environment: containerProperties.environment,
+      secrets: {
+        SECRET: ecs.Secret.fromSecretsManager(secret),
+      },
       logging: new ecs.AwsLogDriver({ streamPrefix: `${id}` }),
     })
     .addPortMappings({
@@ -69,6 +101,7 @@ const configureClusterAndServices = (
   stack: cdk.Stack,
   cluster: ecs.Cluster,
   namespace: servicediscovery.PrivateDnsNamespace,
+  // taskRole: iam.Role,
   // certificate: cm.ICertificate,
   containerProperties: ContainerProperties[],
   tags: Tag[]
@@ -85,8 +118,8 @@ const configureClusterAndServices = (
         ),
         cloudMapOptions: {
           cloudMapNamespace: namespace,
-          name: container.repoName
-        }
+          name: container.repoName,
+        },
       })
   );
 
@@ -118,7 +151,7 @@ const configureClusterAndServices = (
           path: containerProperties[i].healthCheckPath,
           interval: cdk.Duration.seconds(60),
           timeout: cdk.Duration.seconds(30),
-        }
+        },
       }),
     })
   );
@@ -136,8 +169,8 @@ export const createStack = (
   containerProperties: ContainerProperties[],
   // domainProperties: DomainProperties,
   tags: Tag[],
-  props: cdk.StackProps,
-  vpc?: ec2.Vpc,
+  props: NcbpEcsStackProps,
+  vpc?: ec2.Vpc
 ) => {
   const stack = new cdk.Stack(scope, id, props);
   tags.forEach((tag) => cdk.Tags.of(stack).add(tag.name, tag.value));
@@ -145,7 +178,6 @@ export const createStack = (
   // const certificate = cm.Certificate.fromCertificateArn(stack, `${id}Certificate`,
   //   domainProperties.domainCertificateArn);
 
-  
   // NOTE: Limit AZs to avoid reaching resource quotas
   const vpcInUse = new ec2.Vpc(stack, `${id}Vpc`, { maxAzs: 2 });
 
@@ -156,7 +188,21 @@ export const createStack = (
       name: "services",
       vpc: vpcInUse,
     }
-  )
+  );
+
+  // const taskRole = new iam.Role(stack, "ecsTaskExecutionRole", {
+  //   roleName: `${id}TaskExecutionRole`,
+  //   assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+  // });
+
+  // taskRole.addManagedPolicy(
+  //   iam.ManagedPolicy.fromAwsManagedPolicyName(
+  //     "service-role/AmazonECSTaskExecutionRolePolicy"
+  //   )
+  // );
+
+  // props?.ncbpTable.grantReadWriteData(taskRole);
+  // props?.s3Bucket.grantReadWrite(taskRole);
 
   const cluster = new ecs.Cluster(stack, `${id}Cluster`, { vpc: vpcInUse });
   const { loadBalancer, services } = configureClusterAndServices(
@@ -165,8 +211,12 @@ export const createStack = (
     cluster,
     dnsNamespace,
     containerProperties,
-    tags,
+    tags
   );
+  // services.forEach((service, i) => {
+  //   props?.ncbpTable.grantReadWriteData(service.taskDefinition.taskRole);
+  //   props?.s3Bucket.grantReadWrite(service.taskDefinition.taskRole);
+  // });
 
   // const zone = route53.HostedZone.fromLookup(stack, `${id}Zone`, {
   //   domainName: domainProperties.domainName
