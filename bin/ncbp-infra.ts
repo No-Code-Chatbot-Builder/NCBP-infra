@@ -75,6 +75,26 @@ const dockerProperties: ContainerProperties[] = [
     healthCheckPath: "/bot/health",
   },
   {
+    repoName: "finetune-service",
+    containerPort: 80,
+    id: "FinetuneService",
+    conditions: [elbv2.ListenerCondition.pathPatterns(["/finetune*"])],
+    environment: {
+    },
+    secretArn: "",
+    healthCheckPath: "/finetune/health",
+  },
+  {
+    repoName: "frontend-service",
+    containerPort: 80,
+    id: "FrontendService",
+    conditions: [elbv2.ListenerCondition.pathPatterns(["/*"])],
+    environment: {
+    },
+    secretArn: "",
+    healthCheckPath: "/",
+  },
+  {
     repoName: "langchain-embedding-service",
     containerPort: 80,
     id: "LangchainEmbeddingService",
