@@ -45,14 +45,30 @@ const createTaskDefinition = (
   // taskRole: iam.Role,
   tags: Tag[]
 ) => {
-  const secret = secretsmanager.Secret.fromSecretCompleteArn(stack, `${id}Secret`, containerProperties.secretArn);
+  let secret = null;
+
+  if (containerProperties.secretArn !== "") {
+    secret = secretsmanager.Secret.fromSecretCompleteArn(
+      stack,
+      `${id}Secret`,
+      containerProperties.secretArn
+    );
+  }
 
   const taskDefinition = new ecs.FargateTaskDefinition(
     stack,
     `${id}TaskDefinition`,
     {
-      cpu: 4096,
-      memoryLimitMiB: 30720,
+      cpu:
+        containerProperties.repoName in
+        ["workspace-service", "key-management-service"]
+          ? 512
+          : 256,
+      memoryLimitMiB:
+        containerProperties.repoName in
+        ["workspace-service", "key-management-service"]
+          ? 1024
+          : 512,
       taskRole: new iam.Role(stack, `${id}TaskRole`, {
         roleName: `${id}TaskRole`,
         assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
@@ -80,12 +96,21 @@ const createTaskDefinition = (
             ),
             "latest"
           ),
-      memoryLimitMiB: 2048,
-      cpu: 512,
+      memoryLimitMiB:
+        containerProperties.repoName in
+        ["workspace-service", "key-management-service"]
+          ? 4096
+          : 512,
+      cpu:
+        containerProperties.repoName in
+        ["workspace-service", "key-management-service"]
+          ? 512
+          : 256,
       environment: containerProperties.environment,
-      secrets: {
-        SECRET: ecs.Secret.fromSecretsManager(secret),
-      },
+
+      secrets: secret
+        ? { SECRET: ecs.Secret.fromSecretsManager(secret) }
+        : undefined,
       logging: new ecs.AwsLogDriver({ streamPrefix: `${id}` }),
     })
     .addPortMappings({
@@ -104,7 +129,8 @@ const configureClusterAndServices = (
   // taskRole: iam.Role,
   // certificate: cm.ICertificate,
   containerProperties: ContainerProperties[],
-  tags: Tag[]
+  tags: Tag[],
+  commonSecurityGroup: ec2.SecurityGroup
 ) => {
   const services = containerProperties.map(
     (container) =>
@@ -120,6 +146,7 @@ const configureClusterAndServices = (
           cloudMapNamespace: namespace,
           name: container.repoName,
         },
+        securityGroups: [commonSecurityGroup],
       })
   );
 
@@ -129,6 +156,7 @@ const configureClusterAndServices = (
     {
       vpc: cluster.vpc,
       internetFacing: true,
+      idleTimeout: cdk.Duration.minutes(15)
     }
   );
   // createHttpsRedirect(id, stack, loadBalancer);
@@ -149,9 +177,13 @@ const configureClusterAndServices = (
         conditions: containerProperties[i].conditions,
         healthCheck: {
           path: containerProperties[i].healthCheckPath,
-          interval: cdk.Duration.seconds(60),
-          timeout: cdk.Duration.seconds(30),
+          interval: cdk.Duration.seconds(120),
+          timeout: cdk.Duration.seconds(90),
+          healthyThresholdCount: 5,
+          unhealthyThresholdCount: 5,
         },
+        
+        stickinessCookieDuration: cdk.Duration.hours(1),
       }),
     })
   );
@@ -190,6 +222,22 @@ export const createStack = (
     }
   );
 
+  const commonSecurityGroup = new ec2.SecurityGroup(
+    stack,
+    "CommonEcsSecurityGroup",
+    {
+      vpc: vpcInUse,
+      description: "Allow communication between ECS services",
+      allowAllOutbound: true, // Typical requirement, adjust based on your needs
+    }
+  );
+
+  commonSecurityGroup.addIngressRule(
+    commonSecurityGroup,
+    ec2.Port.tcp(80),
+    "Allow communication between ECS services"
+  );
+
   // const taskRole = new iam.Role(stack, "ecsTaskExecutionRole", {
   //   roleName: `${id}TaskExecutionRole`,
   //   assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
@@ -211,7 +259,8 @@ export const createStack = (
     cluster,
     dnsNamespace,
     containerProperties,
-    tags
+    tags,
+    commonSecurityGroup
   );
   // services.forEach((service, i) => {
   //   props?.ncbpTable.grantReadWriteData(service.taskDefinition.taskRole);

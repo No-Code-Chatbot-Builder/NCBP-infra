@@ -24,22 +24,24 @@ const ncbpInfraStack = new NcbpInfraStack(app, "NcbpInfraStack", {
 const stackName = `FargateServiceStack`;
 
 const dockerProperties: ContainerProperties[] = [
-  // {
-  //   repoName: 'book-service',
-  //   containerPort: 80,
-  //   id: 'BookService',
-  //   conditions: [
-  //     elbv2.ListenerCondition.pathPatterns(['/api/books*'])],
-  //   environment: {  },
-  //   healthCheckPath: "/api/books/health"
-  // },
+  {
+    repoName: 'user-service',
+    containerPort: 80,
+    id: 'UserService',
+    conditions: [
+      elbv2.ListenerCondition.pathPatterns(['/users*'])],
+    environment: {  },
+    secretArn: "arn:aws:secretsmanager:us-east-1:637423235266:secret:user-service-nnU3A6",
+    healthCheckPath: "/users/health"
+  },
   {
     repoName: "workspace-service",
     containerPort: 80,
     id: "WorkspaceService",
     conditions: [elbv2.ListenerCondition.pathPatterns(["/workspaces*"])],
     environment: {},
-    secretArn: "arn:aws:secretsmanager:us-east-1:637423235266:secret:workspace-service-8IHfUx",
+    secretArn:
+      "arn:aws:secretsmanager:us-east-1:637423235266:secret:workspace-service-8IHfUx",
     healthCheckPath: "/workspaces/health",
   },
   {
@@ -48,8 +50,19 @@ const dockerProperties: ContainerProperties[] = [
     id: "DatasetService",
     conditions: [elbv2.ListenerCondition.pathPatterns(["/datasets*"])],
     environment: {},
-    secretArn: "arn:aws:secretsmanager:us-east-1:637423235266:secret:datasets-service-HOyAye",
+    secretArn:
+      "arn:aws:secretsmanager:us-east-1:637423235266:secret:datasets-service-HOyAye",
     healthCheckPath: "/datasets/health",
+  },
+  {
+    repoName: "key-management-service",
+    containerPort: 80,
+    id: "KeyManagementService",
+    conditions: [elbv2.ListenerCondition.pathPatterns(["/domains*"])],
+    environment: {},
+    secretArn:
+      "arn:aws:secretsmanager:us-east-1:637423235266:secret:key-management-service-VB54Ld",
+    healthCheckPath: "/domains/health",
   },
   {
     repoName: "bot-service",
@@ -61,25 +74,25 @@ const dockerProperties: ContainerProperties[] = [
     secretArn: "arn:aws:secretsmanager:us-east-1:637423235266:secret:bot-service-ZY9VSs",
     healthCheckPath: "/bot/health",
   },
-  // {
-  //   repoName: 'langchain-embedding-service',
-  //   containerPort: 80,
-  //   id: 'LangchainEmbeddingService',
-  //   conditions: [
-  //     elbv2.ListenerCondition.pathPatterns(['/*'])],
-  //   environment: {  },
-  //   healthCheckPath: "/",
-  //   dockerHub: true,
-  //   dockerHubUsername: "zohaibazam58"
-  // },
+  {
+    repoName: "langchain-embedding-service",
+    containerPort: 80,
+    id: "LangchainEmbeddingService",
+    conditions: [elbv2.ListenerCondition.pathPatterns(["/*"])],
+    environment: {},
+    healthCheckPath: "/",
+    secretArn: "",
+    dockerHub: true,
+    dockerHubUsername: "zohaibazam58",
+  },
 ];
 
 const stackTags: { name: string; value: string }[] = [
-  // { name: 'BookService', value: 'starter-app' },
-  { name: "WorkspaceService", value: "starter-app" },
+  { name: 'UserService', value: 'starter-app' },
+  // { name: "WorkspaceService", value: "starter-app" },
   { name: "DatasetService", value: "starter-app" },
-  // { name: "BotService", value: "starter-app" },
-  // { name: 'LangchainEmbeddingService', value: 'starter-app' },
+  { name: "BotService", value: "starter-app" },
+  { name: 'LangchainEmbeddingService', value: 'starter-app' },
 ];
 createStack(app, stackName, dockerProperties, stackTags, {
   env: {
