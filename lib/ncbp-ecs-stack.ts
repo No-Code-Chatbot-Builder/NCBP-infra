@@ -8,11 +8,20 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as acm from "aws-cdk-lib/aws-certificatemanager";
+import * as route53 from "aws-cdk-lib/aws-route53";
+import * as route53targets from "aws-cdk-lib/aws-route53-targets";
 import "dotenv/config";
 
 interface NcbpEcsStackProps extends cdk.StackProps {
   readonly ncbpTable: dynamodb.Table;
   readonly s3Bucket: s3.Bucket;
+}
+
+interface DomainProperties {
+  domainName: string;
+  subdomainName: string;
+  domainCertificateArn: string;
 }
 
 export interface ContainerProperties {
@@ -55,20 +64,24 @@ const createTaskDefinition = (
     );
   }
 
+  let cpu = 256;
+  let memoryLimitMiB = 512;
+  
+  // Adjust values for specific services
+  if (containerProperties.repoName === "langchain-embedding-service") {
+    // Double the resources for "langchain-embedding-service"
+    cpu = 512;  // Original was 256, now doubled
+    memoryLimitMiB = 4096;  // Original was 512, now doubled
+  }
+
   const taskDefinition = new ecs.FargateTaskDefinition(
     stack,
     `${id}TaskDefinition`,
     {
-      cpu:
-        containerProperties.repoName in
-        ["workspace-service", "key-management-service"]
-          ? 512
-          : 256,
-      memoryLimitMiB:
-        containerProperties.repoName in
-        ["workspace-service", "key-management-service"]
-          ? 1024
-          : 512,
+      cpu: cpu,
+        
+      memoryLimitMiB: memoryLimitMiB,
+        
       taskRole: new iam.Role(stack, `${id}TaskRole`, {
         roleName: `${id}TaskRole`,
         assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
@@ -96,16 +109,8 @@ const createTaskDefinition = (
             ),
             "latest"
           ),
-      memoryLimitMiB:
-        containerProperties.repoName in
-        ["workspace-service", "key-management-service"]
-          ? 4096
-          : 512,
-      cpu:
-        containerProperties.repoName in
-        ["workspace-service", "key-management-service"]
-          ? 512
-          : 256,
+      memoryLimitMiB: memoryLimitMiB,
+      cpu: cpu,
       environment: containerProperties.environment,
 
       secrets: secret
@@ -130,7 +135,8 @@ const configureClusterAndServices = (
   // certificate: cm.ICertificate,
   containerProperties: ContainerProperties[],
   tags: Tag[],
-  commonSecurityGroup: ec2.SecurityGroup
+  commonSecurityGroup: ec2.SecurityGroup,
+  certificate: acm.ICertificate
 ) => {
   const services = containerProperties.map(
     (container) =>
@@ -156,14 +162,30 @@ const configureClusterAndServices = (
     {
       vpc: cluster.vpc,
       internetFacing: true,
-      idleTimeout: cdk.Duration.minutes(15)
+      idleTimeout: cdk.Duration.minutes(15),
     }
   );
   // createHttpsRedirect(id, stack, loadBalancer);
 
-  const listener = loadBalancer.addListener(`${id}HttpsListener`, {
+  // const listener = loadBalancer.addListener(`${id}HttpsListener`, {
+  //   port: 80,
+  //   // certificates: [elbv2.ListenerCertificate.fromArn(certificate.certificateArn)],
+  // });
+  loadBalancer.addListener(`${id}HttpListener`, {
     port: 80,
-    // certificates: [elbv2.ListenerCertificate.fromArn(certificate.certificateArn)],
+    defaultAction: elbv2.ListenerAction.redirect({
+      protocol: elbv2.ApplicationProtocol.HTTPS,
+      port: "443",
+      permanent: true,
+    }),
+  });
+
+  const listener = loadBalancer.addListener(`${id}HttpsListener`, {
+    port: 443,
+    certificates: [
+      elbv2.ListenerCertificate.fromArn(certificate.certificateArn),
+    ],
+    sslPolicy: elbv2.SslPolicy.RECOMMENDED,
   });
 
   services.forEach((service, i) =>
@@ -182,7 +204,6 @@ const configureClusterAndServices = (
           healthyThresholdCount: 5,
           unhealthyThresholdCount: 5,
         },
-        
         stickinessCookieDuration: cdk.Duration.hours(1),
       }),
     })
@@ -199,7 +220,7 @@ export const createStack = (
   scope: cdk.App,
   id: string,
   containerProperties: ContainerProperties[],
-  // domainProperties: DomainProperties,
+  domainProperties: DomainProperties,
   tags: Tag[],
   props: NcbpEcsStackProps,
   vpc?: ec2.Vpc
@@ -207,8 +228,11 @@ export const createStack = (
   const stack = new cdk.Stack(scope, id, props);
   tags.forEach((tag) => cdk.Tags.of(stack).add(tag.name, tag.value));
 
-  // const certificate = cm.Certificate.fromCertificateArn(stack, `${id}Certificate`,
-  //   domainProperties.domainCertificateArn);
+  const certificate = acm.Certificate.fromCertificateArn(
+    stack,
+    `${id}Certificate`,
+    domainProperties.domainCertificateArn
+  );
 
   // NOTE: Limit AZs to avoid reaching resource quotas
   const vpcInUse = new ec2.Vpc(stack, `${id}Vpc`, { maxAzs: 2 });
@@ -238,6 +262,12 @@ export const createStack = (
     "Allow communication between ECS services"
   );
 
+  commonSecurityGroup.addIngressRule(
+    commonSecurityGroup,
+    ec2.Port.tcp(443),
+    "Allow communication between ECS services"
+  );
+
   // const taskRole = new iam.Role(stack, "ecsTaskExecutionRole", {
   //   roleName: `${id}TaskExecutionRole`,
   //   assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
@@ -260,27 +290,30 @@ export const createStack = (
     dnsNamespace,
     containerProperties,
     tags,
-    commonSecurityGroup
+    commonSecurityGroup,
+    certificate
   );
   // services.forEach((service, i) => {
   //   props?.ncbpTable.grantReadWriteData(service.taskDefinition.taskRole);
   //   props?.s3Bucket.grantReadWrite(service.taskDefinition.taskRole);
   // });
 
-  // const zone = route53.HostedZone.fromLookup(stack, `${id}Zone`, {
-  //   domainName: domainProperties.domainName
-  // });
+  const zone = route53.HostedZone.fromLookup(stack, `${id}Zone`, {
+    domainName: domainProperties.domainName,
+  });
 
-  // new route53.CnameRecord(stack, `${id}Site`, {
-  //   zone,
-  //   recordName: domainProperties.subdomainName,
-  //   domainName: loadBalancer.loadBalancerDnsName,
-  // });
+  new route53.CnameRecord(stack, `${id}Site`, {
+    zone,
+    recordName: domainProperties.subdomainName,
+    domainName: loadBalancer.loadBalancerDnsName,
+  });
 
   // Output the DNS name where you can access your service
   new cdk.CfnOutput(stack, `${id}DNS`, {
     value: loadBalancer.loadBalancerDnsName,
   });
-  // new cdk.CfnOutput(stack, `SiteDNS`, { value: `${domainProperties.subdomainName}.${domainProperties.domainName}` });
+  new cdk.CfnOutput(stack, `SiteDNS`, {
+    value: `${domainProperties.subdomainName}.${domainProperties.domainName}`,
+  });
   return stack;
 };

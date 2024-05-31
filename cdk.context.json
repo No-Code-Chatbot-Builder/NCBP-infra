@@ -12,5 +12,9 @@
     "us-west-2b",
     "us-west-2c",
     "us-west-2d"
-  ]
+  ],
+  "hosted-zone:account=637423235266:domainName=solcompute.com:region=us-east-1": {
+    "Id": "/hostedzone/Z09151821QPULA8EU8BKN",
+    "Name": "solcompute.com."
+  }
 }

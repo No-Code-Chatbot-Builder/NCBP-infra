@@ -8,36 +8,40 @@ import { NcbpInfraStack } from "../lib/ncbp-infra-stack";
 import { ContainerProperties, createStack } from "../lib/ncbp-ecs-stack";
 
 const app = new cdk.App();
-const ncbpInfraStack = new NcbpInfraStack(app, "NcbpInfraStack", {
-  /* If you don't specify 'env', this stack will be environment-agnostic.
-   * Account/Region-dependent features and context lookups will not work,
-   * but a single synthesized template can be deployed anywhere. */
-  /* Uncomment the next line to specialize this stack for the AWS Account
-   * and Region that are implied by the current CLI configuration. */
-  // env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
-  /* Uncomment the next line if you know exactly what Account and Region you
-   * want to deploy the stack to. */
-  // env: { account: '123456789012', region: 'us-east-1' },
-  /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
+const version = "-v2"; // Define the version variable with a hyphen
+
+const ncbpInfraProps = {
+  tableName: `ncbp${version}`,
+  bucketName: `ncbp-assets${version}`,
+  userPoolDomainPrefix: `ncbp-user-pool${version}`,
+}
+
+const ncbpInfraStack = new NcbpInfraStack(app, `NcbpInfraStack${version}`, {
+  // Use version in infra stack name
+  env: {
+    account: process.env.CDK_DEFAULT_ACCOUNT,
+    region: process.env.CDK_DEFAULT_REGION,
+  },
+  ...ncbpInfraProps
 });
 
-const stackName = `FargateServiceStack`;
+const stackName = `FargateServiceStack${version}`; // Use version in service stack name
 
 const dockerProperties: ContainerProperties[] = [
   {
-    repoName: 'user-service',
+    repoName: `user-service`, // No version in repo name
     containerPort: 80,
-    id: 'UserService',
-    conditions: [
-      elbv2.ListenerCondition.pathPatterns(['/users*'])],
-    environment: {  },
-    secretArn: "arn:aws:secretsmanager:us-east-1:637423235266:secret:user-service-nnU3A6",
-    healthCheckPath: "/users/health"
+    id: `UserService${version}`,
+    conditions: [elbv2.ListenerCondition.pathPatterns(["/users*"])],
+    environment: {},
+    secretArn:
+      "arn:aws:secretsmanager:us-east-1:637423235266:secret:user-service-nnU3A6",
+    healthCheckPath: "/users/health",
   },
   {
-    repoName: "workspace-service",
+    repoName: "workspace-service", // No version in repo name
     containerPort: 80,
-    id: "WorkspaceService",
+    id: `WorkspaceService${version}`,
     conditions: [elbv2.ListenerCondition.pathPatterns(["/workspaces*"])],
     environment: {},
     secretArn:
@@ -45,9 +49,9 @@ const dockerProperties: ContainerProperties[] = [
     healthCheckPath: "/workspaces/health",
   },
   {
-    repoName: "dataset-service",
+    repoName: "dataset-service", // No version in repo name
     containerPort: 80,
-    id: "DatasetService",
+    id: `DatasetService${version}`,
     conditions: [elbv2.ListenerCondition.pathPatterns(["/datasets*"])],
     environment: {},
     secretArn:
@@ -55,9 +59,9 @@ const dockerProperties: ContainerProperties[] = [
     healthCheckPath: "/datasets/health",
   },
   {
-    repoName: "key-management-service",
+    repoName: "key-management-service", // No version in repo name
     containerPort: 80,
-    id: "KeyManagementService",
+    id: `KeyManagementService${version}`,
     conditions: [elbv2.ListenerCondition.pathPatterns(["/domains*"])],
     environment: {},
     secretArn:
@@ -65,39 +69,37 @@ const dockerProperties: ContainerProperties[] = [
     healthCheckPath: "/domains/health",
   },
   {
-    repoName: "bot-service",
+    repoName: "bot-service", // No version in repo name
     containerPort: 80,
-    id: "BotService",
+    id: `BotService${version}`,
     conditions: [elbv2.ListenerCondition.pathPatterns(["/bot*"])],
-    environment: {
-    },
-    secretArn: "arn:aws:secretsmanager:us-east-1:637423235266:secret:bot-service-ZY9VSs",
+    environment: {},
+    secretArn:
+      "arn:aws:secretsmanager:us-east-1:637423235266:secret:bot-service-ZY9VSs",
     healthCheckPath: "/bot/health",
   },
   {
-    repoName: "finetune-service",
+    repoName: "finetune-service", // No version in repo name
     containerPort: 80,
-    id: "FinetuneService",
+    id: `FinetuneService${version}`,
     conditions: [elbv2.ListenerCondition.pathPatterns(["/finetune*"])],
-    environment: {
-    },
+    environment: {},
     secretArn: "",
     healthCheckPath: "/finetune/health",
   },
+  // {
+  //   repoName: "frontend-service", // No version in repo name
+  //   containerPort: 80,
+  //   id: `FrontendService${version}`,
+  //   conditions: [elbv2.ListenerCondition.pathPatterns(["/*"])],
+  //   environment: {},
+  //   secretArn: "",
+  //   healthCheckPath: "/"
+  // },
   {
-    repoName: "frontend-service",
+    repoName: "langchain-embedding-service", // No version in repo name
     containerPort: 80,
-    id: "FrontendService",
-    conditions: [elbv2.ListenerCondition.pathPatterns(["/*"])],
-    environment: {
-    },
-    secretArn: "",
-    healthCheckPath: "/",
-  },
-  {
-    repoName: "langchain-embedding-service",
-    containerPort: 80,
-    id: "LangchainEmbeddingService",
+    id: `LangchainEmbeddingService${version}`,
     conditions: [elbv2.ListenerCondition.pathPatterns(["/*"])],
     environment: {},
     healthCheckPath: "/",
@@ -107,14 +109,21 @@ const dockerProperties: ContainerProperties[] = [
   },
 ];
 
+const domainProps = {
+  domainName: "solcompute.com",
+  subdomainName: "api",
+  domainCertificateArn:
+    "arn:aws:acm:us-east-1:637423235266:certificate/942b10bd-8520-4807-b04a-604ada15543f",
+};
+
 const stackTags: { name: string; value: string }[] = [
-  { name: 'UserService', value: 'starter-app' },
-  // { name: "WorkspaceService", value: "starter-app" },
-  { name: "DatasetService", value: "starter-app" },
-  { name: "BotService", value: "starter-app" },
-  { name: 'LangchainEmbeddingService', value: 'starter-app' },
+  { name: `UserService${version}`, value: "starter-app" },
+  { name: `DatasetService${version}`, value: "starter-app" },
+  { name: `BotService${version}`, value: "starter-app" },
+  { name: `LangchainEmbeddingService${version}`, value: "starter-app" },
 ];
-createStack(app, stackName, dockerProperties, stackTags, {
+
+createStack(app, stackName, dockerProperties, domainProps, stackTags, {
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION,

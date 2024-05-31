@@ -7,18 +7,25 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as iam from "aws-cdk-lib/aws-iam";
 import { S3CdnBucket } from "./constructs/s3-cdn-bucket";
 
+interface NcbpInfraStackProps extends cdk.StackProps {
+  readonly tableName: string;
+  readonly bucketName: string;
+  readonly userPoolDomainPrefix: string;
+
+}
+
 export class NcbpInfraStack extends cdk.Stack {
   public readonly userPool: cognito.UserPool;
   public readonly userPoolClient: cognito.UserPoolClient;
   public readonly dynamoTable: dynamodb.Table;
   public readonly s3Bucket: s3.Bucket;
 
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props?: NcbpInfraStackProps) {
     super(scope, id, props);
 
     // dynamodb table: stores data for users, analysis
     this.dynamoTable = new dynamodb.Table(this, "NcbpTable", {
-      tableName: "ncbp",
+      tableName: props!.tableName,
       partitionKey: { name: "PK", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "SK", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -51,7 +58,7 @@ export class NcbpInfraStack extends cdk.Stack {
 
     // s3 bucket: stores user uploads
     this.s3Bucket = new S3CdnBucket(this, "NcbpS3CdnBucket", {
-      bucketName: "ncbp-assets",
+      bucketName: props!.bucketName,
       removalPolicy: false
     }).assetsBucket
 
@@ -94,7 +101,7 @@ export class NcbpInfraStack extends cdk.Stack {
 
     const domain = this.userPool.addDomain("NcbpUserPoolDomain", {
       cognitoDomain: {
-        domainPrefix: "ncbp-user-pool",
+        domainPrefix: props!.userPoolDomainPrefix,
       },
     });
 
